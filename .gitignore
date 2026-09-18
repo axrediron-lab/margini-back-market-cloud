@@ -1,0 +1,27 @@
+# Credenziali e configurazioni locali
+.env
+.env.*
+!.env.example
+supabase/.temp/
+
+# Dipendenze e build
+node_modules/
+dist/
+coverage/
+.DS_Store
+Thumbs.db
+
+# Dati operativi: devono restare fuori dal repository
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.ods
+*.zip
+imports/
+data/
+private/
+
+# Eccezioni per fixture sintetiche, se introdotte in seguito
+!**/fixtures/*.json
+!**/fixtures/*.md

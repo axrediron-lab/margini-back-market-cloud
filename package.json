@@ -1,0 +1,13 @@
+{
+  "name": "margini-back-market-cloud",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scaffolding locale separato per Margini Back Market Cloud",
+  "scripts": {
+    "test": "node --test packages/domain/test/*.test.mjs && node scripts/verify-scaffold.mjs",
+    "check": "npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

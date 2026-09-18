@@ -1,0 +1,4 @@
+.summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.spaced{margin-top:14px}
+.table-card{overflow:auto}
+@media(max-width:950px){.summary-grid{grid-template-columns:1fr}}
