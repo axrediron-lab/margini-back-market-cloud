@@ -14,7 +14,8 @@ Questa prima fase contiene specifica verificabile, schema PostgreSQL/Supabase, c
 | Motore economico | Contratti e regole pure | Nessun calcolo su dati reali |
 | Interfaccia | Shell table-first V1 | Sette sezioni essenziali, nessun dato reale |
 | Test | Implementati e superati localmente | Regole economiche e controlli statici dello schema |
-| Supabase remoto / dati reali / deploy | **In attesa di autorizzazione** | Non eseguiti |
+| Supabase remoto | Progetto creato | Istanza sana; repository non collegato e nessuna migrazione applicata |
+| Dati reali / deploy | **In attesa di autorizzazione** | Non eseguiti |
 
 ## Avvio locale della sola interfaccia
 
@@ -57,4 +58,4 @@ scripts/                      verifiche statiche locali
 
 ## Passo successivo, non autorizzato in questa fase
 
-Installare la CLI Supabase e avviare uno stack **esclusivamente locale**, applicare la migrazione, eseguire i test RLS con utenti fittizi e collegare la UI al client Supabase locale. Solo dopo una revisione separata si potrà valutare la creazione del progetto remoto.
+Collegare esplicitamente il checkout al progetto Supabase, validare la migrazione e le RLS con dati sintetici, quindi applicare lo schema remoto soltanto dopo una revisione separata. Il progetto remoto esiste, ma non contiene ancora lo schema applicativo e non è collegato a deploy automatici GitHub.
