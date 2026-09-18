@@ -19,14 +19,15 @@ Questa prima fase contiene specifica verificabile, schema PostgreSQL/Supabase, c
 
 ## Avvio locale della sola interfaccia
 
-Non servono dipendenze:
+Dopo `npm install`, avviare:
 
 ```powershell
-cd "apps/web"
-python -m http.server 4173
+npm run dev
 ```
 
 Aprire `http://127.0.0.1:4173`. La UI è una shell navigabile e non si connette a servizi remoti.
+
+Il ciclo consigliato è descritto in `docs/06_FLUSSO_LOCALE.md`: modifiche, test e database locale non richiedono push GitHub né deploy Supabase.
 
 ## Verifica locale
 

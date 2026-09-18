@@ -4,10 +4,21 @@
   "private": true,
   "description": "Scaffolding locale separato per Margini Back Market Cloud",
   "scripts": {
+    "dev": "node scripts/serve-web.mjs",
     "test": "node --test packages/domain/test/*.test.mjs && node scripts/verify-scaffold.mjs",
-    "check": "npm test"
+    "check": "npm test",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
+    "supabase:reset": "supabase db reset --local",
+    "supabase:lint": "supabase db lint --local --level error",
+    "supabase:link": "supabase link --project-ref nizrukbqhfydszpqlzbl",
+    "supabase:dry-run": "supabase db push --linked --dry-run"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "supabase": "^2.117.0"
   }
 }
