@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { handleImportApi } from './local-import-api.mjs';
 
 const root = fileURLToPath(new URL('../apps/web/', import.meta.url));
 const port = Number(process.env.PORT || 4173);
@@ -10,6 +11,7 @@ const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 createServer(async (request, response) => {
   try {
     const pathname = decodeURIComponent(new URL(request.url, `http://${request.headers.host}`).pathname);
+    if (await handleImportApi(request, response, pathname)) return;
     const relative = normalize(pathname === '/' ? 'index.html' : pathname.slice(1));
     if (relative.startsWith('..')) throw new Error('invalid path');
     const file = join(root, relative);

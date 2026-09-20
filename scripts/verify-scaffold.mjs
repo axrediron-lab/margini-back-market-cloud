@@ -11,8 +11,10 @@ const required = [
   'docs/05_CATEGORIE_ECONOMICHE_V1.md',
   'apps/web/index.html',
   'supabase/migrations/202609180001_initial_schema.sql',
+  'supabase/migrations/202609200002_local_batch_confirmation.sql',
   'supabase/functions/import-google-sheet/index.ts',
-  'packages/domain/src/economics.mjs'
+  'packages/domain/src/economics.mjs',
+  'scripts/local-import-api.mjs'
 ];
 
 for (const file of required) {
@@ -35,6 +37,11 @@ for (const marker of ['economic_category', 'report_daily', 'report_monthly', 'MI
 const ui = await readFile(new URL('apps/web/app.js', root), 'utf8');
 for (const screen of ['Riepilogo','Ordini e margini','Costi','Resi','Importazioni','Da controllare','Impostazioni']) {
   assert.ok(ui.includes(screen), `schermata V1 mancante: ${screen}`);
+}
+
+const localApi = await readFile(new URL('scripts/local-import-api.mjs', root), 'utf8');
+for (const marker of ['REMOTE_SUPABASE_BLOCKED', '127.0.0.1', 'contentSha256', 'PREVIEW_HASH_MISMATCH']) {
+  assert.ok(localApi.includes(marker), `protezione operatore locale mancante: ${marker}`);
 }
 
 async function walk(directory) {

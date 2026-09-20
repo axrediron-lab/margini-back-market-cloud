@@ -19,8 +19,9 @@ modifica locale
 
 | Comando | Effetto |
 |---|---|
-| `npm run dev` | apre la UI su `http://127.0.0.1:4173`; nessun cloud |
+| `npm run dev` | apre la UI e l'operatore import su `http://127.0.0.1:4173`; nessun cloud |
 | `npm test` | test regole e struttura; nessun cloud |
+| `npm run test:local-import` | prova anteprima, conferma e duplicato con due righe sintetiche; richiede UI e Supabase locale avviati |
 | `npm run supabase:start` | avvia Supabase locale; richiede Docker |
 | `npm run supabase:reset` | ricrea **solo** il database locale dalle migrazioni |
 | `npm run supabase:lint` | controlla lo schema locale |
@@ -40,4 +41,4 @@ Non usare `supabase db reset --linked`: distrugge e ricrea il database remoto. I
 
 ## Stato del PC
 
-La CLI Supabase è installata come dipendenza del progetto e resta versionata nel `package-lock.json`. Docker Desktop e Supabase locale sono operativi: la migrazione iniziale è stata applicata e il lint non rileva errori. UI, test economici e database possono quindi essere sviluppati e verificati senza pubblicare modifiche.
+La CLI Supabase è installata come dipendenza del progetto e resta versionata nel `package-lock.json`. Docker Desktop e Supabase locale sono operativi. L'operatore legge la service role locale nel processo server, non la espone al browser e blocca esplicitamente URL Supabase remoti. UI, test economici e database possono quindi essere sviluppati e verificati senza pubblicare modifiche.
