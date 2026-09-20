@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 supabase/.temp/
+supabase/.branches/
 
 # Dipendenze e build
 node_modules/
