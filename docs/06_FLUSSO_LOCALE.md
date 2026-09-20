@@ -22,6 +22,8 @@ modifica locale
 | `npm run dev` | apre la UI e l'operatore import su `http://127.0.0.1:4173`; nessun cloud |
 | `npm test` | test regole e struttura; nessun cloud |
 | `npm run test:local-import` | prova anteprima, conferma e duplicato con due righe sintetiche; richiede UI e Supabase locale avviati |
+| `npm run recalculate:dry-run` | calcola copertura e margini senza creare un run |
+| `npm run recalculate:local` | normalizza i batch e salva un nuovo run economico locale |
 | `npm run supabase:start` | avvia Supabase locale; richiede Docker |
 | `npm run supabase:reset` | ricrea **solo** il database locale dalle migrazioni |
 | `npm run supabase:lint` | controlla lo schema locale |

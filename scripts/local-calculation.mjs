@@ -1,0 +1,298 @@
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import {
+  calculateOrderCharges,
+  firstPositiveSaleDate,
+  roundMoney,
+  salesMargin,
+  selectProductCost
+} from '../packages/domain/src/economics.mjs';
+import { getLocalCredentials } from './local-import-api.mjs';
+
+const PAGE_SIZE = 1000;
+
+async function request(path, options = {}) {
+  const { url, key } = getLocalCredentials();
+  const response = await fetch(`${url}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: key,
+      authorization: `Bearer ${key}`,
+      ...(options.headers ?? {})
+    }
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`LOCAL_DATABASE_ERROR:${response.status}:${body.slice(0, 300)}`);
+  }
+  return response.status === 204 ? null : response.json();
+}
+
+async function fetchAll(table, select, query = '') {
+  const rows = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const page = await request(`${table}?select=${encodeURIComponent(select)}${query ? `&${query}` : ''}`, {
+      headers: { range: `${offset}-${offset + PAGE_SIZE - 1}` }
+    });
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) return rows;
+  }
+}
+
+export async function loadLocalDashboard() {
+  const runs = await request('calculation_runs?select=id,created_at,period_start,period_end,coverage,engine_version&status=eq.complete&order=created_at.desc&limit=1');
+  if (!runs.length) return null;
+  const run = runs[0];
+  const [rows, orders, returns, links, anomalies, parameters] = await Promise.all([
+    fetchAll('margin_results', 'order_id,result_date,component,economic_category,amount_eur,status', `run_id=eq.${run.id}&result_type=eq.sales`),
+    fetchAll('orders', 'id,marketplace_order_id'),
+    fetchAll('returns', 'id'),
+    fetchAll('return_links', 'return_id,status'),
+    fetchAll('anomalies', 'code,severity,resolved_at'),
+    fetchAll('parameters', 'key,valid_from,valid_to,value,unit,note')
+  ]);
+  const marketplaceIds = new Map(orders.map((order) => [order.id, order.marketplace_order_id]));
+  const orderMap = new Map();
+  for (const row of rows) {
+    if (!row.order_id) continue;
+    const item = orderMap.get(row.order_id) ?? {
+      id: row.order_id, marketplaceOrderId: marketplaceIds.get(row.order_id), date: row.result_date, status: row.status
+    };
+    item[row.component] = number(row.amount_eur);
+    if (row.status === 'suspended') item.status = 'suspended';
+    orderMap.set(row.order_id, item);
+  }
+  const orderResults = [...orderMap.values()].filter((order) => Object.hasOwn(order, 'margin'));
+  const covered = orderResults.filter((order) => order.status !== 'suspended');
+  const buckets = new Map();
+  for (const order of covered) {
+    const day = buckets.get(order.date) ?? { date: order.date, revenueEur: 0, marginEur: 0, orders: 0 };
+    day.revenueEur += order.revenue ?? 0;
+    day.marginEur += order.margin ?? 0;
+    day.orders += 1;
+    buckets.set(order.date, day);
+  }
+  const daily = [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date)).map((day) => ({
+    ...day, revenueEur: roundMoney(day.revenueEur), marginEur: roundMoney(day.marginEur)
+  }));
+  const monthMap = new Map();
+  for (const day of daily) {
+    const month = day.date.slice(0, 7);
+    const item = monthMap.get(month) ?? { month, revenueEur: 0, marginEur: 0, orders: 0 };
+    item.revenueEur += day.revenueEur;
+    item.marginEur += day.marginEur;
+    item.orders += day.orders;
+    monthMap.set(month, item);
+  }
+  const monthly = [...monthMap.values()].map((item) => ({
+    ...item, revenueEur: roundMoney(item.revenueEur), marginEur: roundMoney(item.marginEur)
+  }));
+  const sumComponent = (component) => roundMoney(covered.reduce((sum, order) => sum + (order[component] ?? 0), 0));
+  const openAnomalies = anomalies.filter((anomaly) => !anomaly.resolved_at);
+  return {
+    run: { id: run.id, createdAt: run.created_at, periodStart: run.period_start, periodEnd: run.period_end, engineVersion: run.engine_version },
+    summary: {
+      ...run.coverage,
+      productCostEur: -sumComponent('product_cost'),
+      shippingEur: -sumComponent('shipping'),
+      marketplaceFeesEur: -sumComponent('marketplace_fee'),
+      investorFeesEur: -sumComponent('investor_fee'),
+      storfundFeesEur: -sumComponent('storfund_fee'),
+      returns: returns.length,
+      linkedReturns: links.filter((link) => link.status === 'linked').length,
+      openAnomalies: openAnomalies.length
+    },
+    daily,
+    monthly,
+    latestOrders: orderResults.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30),
+    anomalyCounts: Object.fromEntries(openAnomalies.reduce((map, anomaly) => map.set(anomaly.code, (map.get(anomaly.code) ?? 0) + 1), new Map())),
+    parameters
+  };
+}
+
+async function rpc(name, payload = {}) {
+  return request(`rpc/${name}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+}
+
+const number = (value) => value === null || value === undefined ? null : Number(value);
+const pushToMap = (map, key, value) => map.set(key, [...(map.get(key) ?? []), value]);
+
+function resultRow({ resultType, resultDate, orderId = null, component, economicCategory = null, amountEur = null, status, sourceRefs = [], details = {} }) {
+  return { resultType, resultDate, orderId, component, economicCategory, amountEur, status, sourceRefs, details };
+}
+
+export async function calculateLocalSnapshot({ persist = true } = {}) {
+  await rpc('materialize_imports');
+  const [orders, lines, movements, costs, parameters, batches] = await Promise.all([
+    fetchAll('orders', 'id,marketplace_order_id,sold_at,provisional'),
+    fetchAll('order_lines', 'id,order_id,source_row_id,product_code,quantity,ready_purchase_price,ready_fifo_cost,carrier,line_origin'),
+    fetchAll('invoice_movements', 'id,source_row_id,order_id,movement_type,value_date,amount,amount_eur,economic_category,financial_flow,provisional,include_in_sales_margin,include_in_company_margin'),
+    fetchAll('cost_entries', 'id,source_row_id,product_code,cost_type,available_on,quantity,unit_cost_eur'),
+    fetchAll('parameters', 'key,scope,valid_from,valid_to,value,unit,note'),
+    fetchAll('import_batches', 'id,is_active,status')
+  ]);
+
+  const orderById = new Map(orders.map((order) => [order.id, order]));
+  const linesByOrder = new Map();
+  const movementsByOrder = new Map();
+  const purchasesByProduct = new Map();
+  for (const line of lines) if (line.line_origin === 'READY') pushToMap(linesByOrder, line.order_id, line);
+  for (const movement of movements) if (movement.order_id) pushToMap(movementsByOrder, movement.order_id, movement);
+  for (const cost of costs) if (cost.cost_type === 'purchase') pushToMap(purchasesByProduct, cost.product_code, {
+    id: cost.id, type: 'purchase', availableOn: cost.available_on,
+    quantity: number(cost.quantity), unitCostEur: number(cost.unit_cost_eur)
+  });
+
+  const economicParameters = parameters.map((parameter) => ({
+    key: parameter.key, validFrom: parameter.valid_from, validTo: parameter.valid_to,
+    value: number(parameter.value), unit: parameter.unit, note: parameter.note
+  }));
+  const results = [];
+  const anomalies = [];
+  const orderSummaries = [];
+
+  for (const [orderId, orderMovements] of movementsByOrder) {
+    const positiveSales = orderMovements.filter((movement) =>
+      movement.movement_type === 'sales' && number(movement.amount) > 0
+    );
+    if (!positiveSales.length) continue;
+    const order = orderById.get(orderId);
+    const soldOn = firstPositiveSaleDate(orderMovements.map((movement) => ({
+      movementType: movement.movement_type,
+      amount: number(movement.amount),
+      valueDate: movement.value_date
+    })));
+    const orderLines = linesByOrder.get(orderId) ?? [];
+    const revenueEur = roundMoney(orderMovements
+      .filter((movement) => movement.include_in_sales_margin && movement.economic_category === 'revenue')
+      .reduce((sum, movement) => sum + (number(movement.amount_eur) ?? 0), 0));
+    const initialInvoiceFeesEur = roundMoney(orderMovements
+      .filter((movement) => movement.include_in_sales_margin && movement.economic_category === 'marketplace_fee')
+      .reduce((sum, movement) => sum + (number(movement.amount_eur) ?? 0), 0));
+    const positiveSalesEur = roundMoney(positiveSales.reduce((sum, movement) => sum + (number(movement.amount_eur) ?? 0), 0));
+
+    const costSelections = orderLines.map((line) => ({
+      line,
+      selection: selectProductCost({
+        soldOn,
+        purchases: purchasesByProduct.get(line.product_code) ?? [],
+        readyPurchasePrice: number(line.ready_purchase_price),
+        readyFifoCost: number(line.ready_fifo_cost)
+      })
+    }));
+    const missingCosts = costSelections.filter(({ selection }) => selection.status === 'suspended');
+    const productCostEur = missingCosts.length || !orderLines.length ? null : roundMoney(costSelections.reduce(
+      (sum, { line, selection }) => sum + roundMoney(number(line.quantity) * selection.unitCostEur), 0
+    ));
+    const charges = calculateOrderCharges({
+      soldOn,
+      positiveSalesEur,
+      carriers: orderLines.map((line) => line.carrier),
+      parameters: economicParameters
+    });
+    const blocking = [];
+    if (!orderLines.length) blocking.push('MISSING_ORDER_LINE');
+    if (missingCosts.length) blocking.push('MISSING_PRODUCT_COST');
+    if (charges.status === 'suspended') blocking.push(charges.code);
+    const margin = blocking.length ? { status: 'suspended', marginEur: null } : salesMargin({
+      revenueEur,
+      initialInvoiceFeesEur,
+      productCostEur,
+      shippingEur: charges.shippingEur,
+      investorFeeEur: charges.investorFeeEur,
+      storfundFeeEur: charges.storfundFeeEur,
+      provisional: Boolean(order?.provisional)
+    });
+    const status = margin.status;
+    const sourceRefs = [
+      ...orderMovements.map((movement) => ({ type: 'invoice_movement', id: movement.id, sourceRowId: movement.source_row_id })),
+      ...orderLines.map((line) => ({ type: 'order_line', id: line.id, sourceRowId: line.source_row_id }))
+    ];
+    const costSources = costSelections.map(({ line, selection }) => ({
+      orderLineId: line.id,
+      productCode: line.product_code,
+      source: selection.source ?? null,
+      sourceIds: selection.sourceIds ?? [],
+      code: selection.code ?? null
+    }));
+    const details = { blocking, positiveSalesEur, costSources };
+    const values = [
+      ['revenue', 'revenue', revenueEur],
+      ['marketplace_fee', 'marketplace_fee', initialInvoiceFeesEur],
+      ['product_cost', 'product_cost', productCostEur === null ? null : -productCostEur],
+      ['shipping', 'shipping', charges.shippingEur === undefined ? null : -charges.shippingEur],
+      ['investor_fee', 'investor_fee', charges.investorFeeEur === undefined ? null : -charges.investorFeeEur],
+      ['storfund_fee', 'storfund_fee', charges.storfundFeeEur === undefined ? null : -charges.storfundFeeEur],
+      ['margin', null, margin.marginEur === null ? null : roundMoney(margin.marginEur)]
+    ];
+    for (const [component, economicCategory, amountEur] of values) results.push(resultRow({
+      resultType: 'sales', resultDate: soldOn, orderId, component,
+      economicCategory, amountEur, status, sourceRefs, details
+    }));
+    results.push(resultRow({
+      resultType: 'company', resultDate: soldOn, orderId,
+      component: 'sales_margin', amountEur: margin.marginEur === null ? null : roundMoney(margin.marginEur),
+      status, sourceRefs, details
+    }));
+    orderSummaries.push({ orderId, soldOn, revenueEur, marginEur: margin.marginEur, status });
+
+    if (!orderLines.length) anomalies.push({
+      anomalyKey: `order:${orderId}:line`, severity: 'blocking', entityType: 'order', entityId: orderId,
+      code: 'UNLINKED_ORDER', message: 'Ordine Invoice senza riga Ready collegata', details: {}
+    });
+    if (missingCosts.length) anomalies.push({
+      anomalyKey: `order:${orderId}:cost`, severity: 'blocking', entityType: 'order', entityId: orderId,
+      code: 'MISSING_COST', message: 'Costo prodotto non disponibile secondo la gerarchia temporale',
+      details: { orderLineIds: missingCosts.map(({ line }) => line.id) }
+    });
+    if (['MISSING_CARRIER', 'AMBIGUOUS_CARRIER'].includes(charges.code)) anomalies.push({
+      anomalyKey: `order:${orderId}:carrier`, severity: 'blocking', entityType: 'order', entityId: orderId,
+      code: charges.code, message: charges.code === 'MISSING_CARRIER' ? 'Vettore mancante' : 'Più vettori incompatibili sullo stesso ordine', details: {}
+    });
+  }
+
+  for (const movement of movements) {
+    if (!movement.include_in_company_margin || movement.include_in_sales_margin || movement.financial_flow) continue;
+    results.push(resultRow({
+      resultType: 'company', resultDate: movement.value_date, orderId: movement.order_id,
+      component: `invoice_${movement.id}`, economicCategory: movement.economic_category,
+      amountEur: number(movement.amount_eur), status: movement.provisional ? 'provisional' : 'final',
+      sourceRefs: [{ type: 'invoice_movement', id: movement.id, sourceRowId: movement.source_row_id }]
+    }));
+  }
+
+  const covered = orderSummaries.filter((order) => order.status !== 'suspended');
+  const suspended = orderSummaries.filter((order) => order.status === 'suspended');
+  const dates = movements.map((movement) => movement.value_date).filter(Boolean).sort();
+  const coverage = {
+    totalOrders: orderSummaries.length,
+    coveredOrders: covered.length,
+    suspendedOrders: suspended.length,
+    percent: orderSummaries.length ? roundMoney(covered.length / orderSummaries.length * 100) : 0,
+    revenueEur: roundMoney(covered.reduce((sum, order) => sum + order.revenueEur, 0)),
+    salesMarginEur: roundMoney(covered.reduce((sum, order) => sum + order.marginEur, 0))
+  };
+  const companyComponents = results.filter((row) => row.resultType === 'company' && row.status !== 'suspended' && Number.isFinite(row.amountEur));
+  coverage.companyMarginEur = roundMoney(companyComponents.reduce((sum, row) => sum + row.amountEur, 0));
+
+  let runId = null;
+  if (persist && dates.length) {
+    const rules = await readFile(new URL('../packages/domain/src/economics.mjs', import.meta.url));
+    runId = await rpc('save_calculation_run', {
+      p_engine_version: 'v1.0.0-local',
+      p_rules_hash: createHash('sha256').update(rules).digest('hex'),
+      p_period_start: dates[0],
+      p_period_end: dates.at(-1),
+      p_input_batch_ids: batches.filter((batch) => batch.is_active && batch.status === 'imported').map((batch) => batch.id),
+      p_parameter_values: economicParameters,
+      p_coverage: coverage,
+      p_results: results,
+      p_anomalies: anomalies
+    });
+  }
+  return { runId, coverage, resultRows: results.length, anomalies: anomalies.length };
+}

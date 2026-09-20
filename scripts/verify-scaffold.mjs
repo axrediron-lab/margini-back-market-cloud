@@ -12,9 +12,12 @@ const required = [
   'apps/web/index.html',
   'supabase/migrations/202609180001_initial_schema.sql',
   'supabase/migrations/202609200002_local_batch_confirmation.sql',
+  'supabase/migrations/202609200003_materialize_operational_data.sql',
+  'supabase/migrations/202609200004_calculation_runs.sql',
   'supabase/functions/import-google-sheet/index.ts',
   'packages/domain/src/economics.mjs',
-  'scripts/local-import-api.mjs'
+  'scripts/local-import-api.mjs',
+  'scripts/local-calculation.mjs'
 ];
 
 for (const file of required) {
@@ -42,6 +45,11 @@ for (const screen of ['Riepilogo','Ordini e margini','Costi','Resi','Importazion
 const localApi = await readFile(new URL('scripts/local-import-api.mjs', root), 'utf8');
 for (const marker of ['REMOTE_SUPABASE_BLOCKED', '127.0.0.1', 'contentSha256', 'PREVIEW_HASH_MISMATCH']) {
   assert.ok(localApi.includes(marker), `protezione operatore locale mancante: ${marker}`);
+}
+
+const calculation = await readFile(new URL('scripts/local-calculation.mjs', root), 'utf8');
+for (const marker of ['selectProductCost', 'calculateOrderCharges', 'save_calculation_run', 'companyMarginEur']) {
+  assert.ok(calculation.includes(marker), `marker ricalcolo locale mancante: ${marker}`);
 }
 
 async function walk(directory) {

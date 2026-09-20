@@ -75,7 +75,7 @@ function parseEnvOutput(output) {
   }));
 }
 
-function getLocalCredentials() {
+export function getLocalCredentials() {
   if (localCredentials) return localCredentials;
   if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     localCredentials = { url: ensureLocalUrl(process.env.SUPABASE_URL), key: process.env.SUPABASE_SERVICE_ROLE_KEY };
@@ -151,6 +151,26 @@ async function persistPreview(preview) {
 }
 
 export async function handleImportApi(request, response, pathname) {
+  if (request.method === 'GET' && pathname === '/api/dashboard') {
+    try {
+      const { loadLocalDashboard } = await import('./local-calculation.mjs');
+      json(response, 200, { dashboard: await loadLocalDashboard() });
+    } catch (error) {
+      json(response, 503, { error: String(error.message || 'DASHBOARD_FAILED').split(':')[0] });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/recalculate') {
+    try {
+      const { calculateLocalSnapshot } = await import('./local-calculation.mjs');
+      json(response, 200, await calculateLocalSnapshot({ persist: true }));
+    } catch (error) {
+      json(response, 503, { error: String(error.message || 'RECALCULATION_FAILED').split(':')[0] });
+    }
+    return true;
+  }
+
   if (request.method === 'POST' && pathname === '/api/imports/preview') {
     try {
       prunePreviews();

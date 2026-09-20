@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "node scripts/serve-web.mjs",
     "preview:imports": "node scripts/preview-imports.mjs",
+    "recalculate:local": "node scripts/recalculate-local.mjs",
+    "recalculate:dry-run": "node scripts/recalculate-local.mjs --dry-run",
     "test:local-import": "node scripts/test-local-import-api.mjs",
     "test": "node --test packages/domain/test/*.test.mjs && node scripts/verify-scaffold.mjs",
     "check": "npm test",
