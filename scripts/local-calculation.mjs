@@ -128,7 +128,10 @@ const costSourceLabels = {
 async function provenanceFor(sourceRowIds) {
   const ids = [...new Set(sourceRowIds.filter((id) => id !== null && id !== undefined))];
   if (!ids.length) return new Map();
-  const rows = await fetchAll('import_rows', 'id,batch_id,row_number', `id=in.(${ids.join(',')})`);
+  const wanted = new Set(ids.map(String));
+  const rows = ids.length > 500
+    ? (await fetchAll('import_rows', 'id,batch_id,row_number')).filter((row) => wanted.has(String(row.id)))
+    : await fetchAll('import_rows', 'id,batch_id,row_number', `id=in.(${ids.join(',')})`);
   const batchIds = [...new Set(rows.map((row) => row.batch_id))];
   const batches = batchIds.length
     ? await fetchAll('import_batches', 'id,source,source_name', `id=in.(${batchIds.join(',')})`)
@@ -202,6 +205,67 @@ export async function loadOrderDetail(marketplaceOrderId) {
       };
     }),
     movements: movements.map(withProvenance)
+  };
+}
+
+export async function loadLocalOperations() {
+  const [costs, returns, links, anomalies, orders] = await Promise.all([
+    fetchAll('cost_entries', 'id,source_row_id,product_code,sku,cost_type,available_on,quantity,unit_cost_eur'),
+    fetchAll('returns', 'id,source_row_id,document_number,document_date,product_code,sku,quantity,unit_price,currency,marketplace_order_id,reason,context_source_row_ids'),
+    fetchAll('return_links', 'return_id,status,checks,reason'),
+    fetchAll('anomalies', 'id,severity,entity_type,entity_id,code,message,details,resolved_at,created_at'),
+    fetchAll('orders', 'id,marketplace_order_id')
+  ]);
+  const provenance = await provenanceFor([
+    ...costs.map((row) => row.source_row_id),
+    ...returns.map((row) => row.source_row_id)
+  ]);
+  const linkByReturn = new Map(links.map((link) => [link.return_id, link]));
+  const returnById = new Map(returns.map((row) => [row.id, row]));
+  const marketplaceByOrder = new Map(orders.map((order) => [order.id, order.marketplace_order_id]));
+  const source = (row) => provenance.get(String(row.source_row_id)) ?? null;
+  return {
+    costs: costs.map((row) => ({
+      id: row.id,
+      productCode: row.product_code || row.sku,
+      costType: row.cost_type,
+      availableOn: row.available_on,
+      quantity: number(row.quantity),
+      unitCostEur: number(row.unit_cost_eur),
+      provenance: source(row)
+    })).sort((a, b) => b.availableOn.localeCompare(a.availableOn) || String(a.productCode).localeCompare(String(b.productCode))),
+    returns: returns.map((row) => {
+      const link = linkByReturn.get(row.id);
+      return {
+        id: row.id,
+        documentNumber: row.document_number,
+        documentDate: row.document_date,
+        productCode: row.product_code || row.sku,
+        quantity: number(row.quantity),
+        unitPrice: number(row.unit_price),
+        currency: row.currency,
+        marketplaceOrderId: row.marketplace_order_id,
+        reason: row.reason,
+        contextRows: row.context_source_row_ids?.length ?? 0,
+        linkStatus: link?.status ?? 'unmatched',
+        linkReason: link?.reason ?? null,
+        provenance: source(row)
+      };
+    }).sort((a, b) => b.documentDate.localeCompare(a.documentDate) || String(b.documentNumber).localeCompare(String(a.documentNumber))),
+    anomalies: anomalies.filter((row) => !row.resolved_at).map((row) => {
+      const returnRow = row.entity_type === 'return' ? returnById.get(row.entity_id) : null;
+      return {
+        id: row.id,
+        severity: row.severity,
+        entityType: row.entity_type,
+        reference: returnRow?.marketplace_order_id || marketplaceByOrder.get(row.entity_id) || returnRow?.document_number || row.entity_id,
+        productCode: returnRow?.product_code || returnRow?.sku || null,
+        code: row.code,
+        message: row.message,
+        createdAt: row.created_at,
+        provenance: returnRow ? source(returnRow) : null
+      };
+    }).sort((a, b) => a.severity.localeCompare(b.severity) || a.code.localeCompare(b.code))
   };
 }
 

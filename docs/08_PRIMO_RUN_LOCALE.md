@@ -45,6 +45,8 @@ Il costo prodotto segue la gerarchia datata Acquisti, poi `P.Acq.`, poi FIFO. Sp
 
 La schermata **Ordini e margini** espone tutti i 1.034 ordini verificati e permette di filtrarli per periodo, vettore, stato o numero ordine. Aprendo un ordine si vedono la composizione del margine, le righe prodotto, la fonte costo effettivamente selezionata e i movimenti Invoice. Ogni elemento mostra anche il file CSV e la riga fisica di provenienza; per i movimenti SEK restano visibili sia l'importo originale sia quello convertito in EUR.
 
+Le schermate **Costi**, **Resi** e **Da controllare** espongono anche le righe operative filtrabili. I costi distinguono Acquisti, `P.Acq.` e FIFO; i resi mostrano documento, prodotto, motivazione e stato del collegamento; i controlli aperti mantengono priorità, riferimento e provenienza. Queste viste sono di consultazione e non forzano collegamenti o valori economici mancanti.
+
 ## Resi
 
 I 165 resi restano `unmatched`. Il file Ready vendite fornito parte dal 27 agosto, mentre i resi coprono il periodo precedente fino al 26 agosto; mancano quindi righe vendita complete per verificare insieme ordine, prodotto, quantità e prezzo. Nessun collegamento è stato forzato e nessun valore del prodotto rientrato è stato aggiunto al margine.

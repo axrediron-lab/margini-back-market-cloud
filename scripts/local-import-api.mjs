@@ -161,6 +161,16 @@ export async function handleImportApi(request, response, pathname) {
     return true;
   }
 
+  if (request.method === 'GET' && pathname === '/api/operations') {
+    try {
+      const { loadLocalOperations } = await import('./local-calculation.mjs');
+      json(response, 200, { operations: await loadLocalOperations() });
+    } catch (error) {
+      json(response, 503, { error: String(error.message || 'OPERATIONS_FAILED').split(':')[0] });
+    }
+    return true;
+  }
+
   const orderMatch = pathname.match(/^\/api\/orders\/(\d+)$/);
   if (request.method === 'GET' && orderMatch) {
     try {
