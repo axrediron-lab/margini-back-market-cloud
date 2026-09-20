@@ -22,4 +22,18 @@ Questa è la tassonomia semplice e filtrabile usata da schema e UI.
 
 La categoria non viene dedotta liberamente dal testo. Serve una mappatura esplicita della causale Invoice. Una causale non presente nella mappatura genera `UNCLASSIFIED_MOVEMENT`, resta esclusa dal totale interessato e appare in **Da controllare**.
 
-La mappatura puntuale delle causali reali non è ancora compilata perché in questa fase non sono state lette Invoice operative. Potrà essere preparata con accesso in sola lettura a un elenco delle causali, senza importare i file nel repository.
+## Mappatura causali Invoice
+
+| Causale o regola | Categoria | Margine vendite | Margine aziendale |
+|---|---|---:|---:|
+| `sales`, `sales_dp_adjustment` | `revenue` | sì | sì |
+| `sales_fees`, `dp_adjustment_fee`, `ccbm_fees`, `payment_fees`, `paypal_fees`, `klarna_fees`, `oney_fees`, `scalapay_fees` | `marketplace_fee` | sì | sì |
+| `refunds`, prefisso `refund_` | `refund` | no | sì |
+| `avoir_sales_fees`, `dp_adjustment_fee_refund`, `deals_commission_discount`, `credit_requests`, `regularization_chargeback` | `recovery` | no | sì |
+| contiene `backship` | `backship` | no | sì |
+| contiene `epr` o `eco_participation` | `epr` | no | sì |
+| contiene `monthly_fee` | `subscription` | no | sì |
+| `bonus_marketing`, `allowance`, `general_cost`, `adjustment` | `other` | no | sì |
+| prefisso `deferred_payout_`, prefisso `transfer_`, `payment`, `payments`, `payout` | finanziario | no | escluso |
+
+`sales_dp_adjustment` contribuisce ai ricavi ma non crea da solo la data di vendita. Una causale non elencata genera `UNCLASSIFIED_MOVEMENT`.

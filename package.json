@@ -5,6 +5,7 @@
   "description": "Scaffolding locale separato per Margini Back Market Cloud",
   "scripts": {
     "dev": "node scripts/serve-web.mjs",
+    "preview:imports": "node scripts/preview-imports.mjs",
     "test": "node --test packages/domain/test/*.test.mjs && node scripts/verify-scaffold.mjs",
     "check": "npm test",
     "supabase:start": "supabase start",

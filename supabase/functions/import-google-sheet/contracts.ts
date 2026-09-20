@@ -11,9 +11,9 @@ export interface ImportRequest {
 }
 
 export const REQUIRED_HEADERS: Record<Source, string[]> = {
-  invoice: ['value_date', 'movement_type', 'amount', 'currency'],
-  orders: ['order_id', 'sold_at', 'sku', 'quantity'],
-  ready_sales: ['order_id', 'sku', 'quantity'],
-  purchases: ['sku', 'available_on', 'quantity', 'unit_cost_eur'],
-  ready_returns: ['document_type', 'document_number', 'document_date', 'sku', 'quantity', 'unit_price']
+  invoice: ['invoice_key', 'value_date', 'amount', 'currency'],
+  orders: ['order_id', 'orderline_id', 'date_creation'],
+  ready_sales: ['N.ord.web', 'P.Acq.'],
+  purchases: ['Intestatario', 'Prezzo', 'Quant.'],
+  ready_returns: ['Doc. origine', 'Pagamento']
 };

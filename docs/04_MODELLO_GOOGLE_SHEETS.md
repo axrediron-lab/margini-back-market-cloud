@@ -1,28 +1,33 @@
-# Modello semplice per Google Sheets
+# Modello semplice per Google Sheets e CSV
 
-Un foglio può contenere più tab, una per fonte. Le intestazioni sono stabili e in `snake_case`. Non servono formule, script o chiavi nel foglio.
+Il sistema riconosce la fonte dalle intestazioni originali, non dal nome del file o del foglio. Un foglio può contenere più tab, una per fonte. Non servono formule, script o chiavi nel foglio.
 
-## Intestazioni minime
+## Firme minime dei tracciati reali
 
-| Tab/fonte | Intestazioni obbligatorie | Intestazioni utili opzionali |
-|---|---|---|
-| Invoice | `value_date`, `movement_type`, `amount`, `currency` | `movement_id`, `order_id`, `designation`, `classification` |
-| Export ordini | `order_id`, `sold_at`, `sku`, `quantity` | `line_id`, `description`, `unit_price`, `currency` |
-| Ready vendite | `order_id`, `sku`, `quantity` | `document_number`, `document_date`, `ready_purchase_price`, `ready_fifo_cost` |
-| Costi / Acquisti | `sku`, `available_on`, `quantity`, `unit_cost_eur` | `document_number`, `supplier` |
-| Ready Resi | `document_type`, `document_number`, `document_date`, `sku`, `quantity`, `unit_price` | `currency`, `origin_document_number`, `reason` |
+| Fonte | Intestazioni caratteristiche |
+|---|---|
+| Invoice Back Market | `invoice_key`, `value_date`, `amount`, `currency` |
+| Export ordini Back Market | `order_id`, `orderline_id`, `date_creation` |
+| Ready vendite | `N.ord.web`, `P.Acq.` |
+| Costi / Acquisti | `Intestatario`, `Prezzo`, `Quant.` |
+| Ready Resi | `Doc. origine`, `Pagamento` |
 
-## Regole di compilazione
+Invoice usa la virgola come delimitatore. Gli altri CSV usano il punto e virgola. Il parser elimina il BOM UTF-8, rispetta campi tra virgolette e distingue i decimali italiani da quelli Invoice.
 
-- una riga di intestazione, nessuna cella unita;
-- date ISO `AAAA-MM-GG` raccomandate;
-- importi come numeri, senza simboli di valuta;
-- valute ISO (`EUR`, `SEK`, ecc.);
-- quantità strettamente positive;
-- identificativi e SKU trattati come testo;
-- una riga vuota può essere ignorata, ma non interrompe la lettura;
-- correzione: aggiornare il foglio, creare una nuova anteprima e confermare il batch sostitutivo.
+## Regole comuni
 
-## Anteprima sintetica
+- conservare file, hash SHA-256, batch e numero fisico della riga;
+- lo stesso hash per la stessa fonte non viene importato due volte;
+- identificativi e codici prodotto restano testo;
+- gli importi Invoice conservano importo, valuta e segno originali;
+- una riga vuota può essere ignorata senza interrompere la lettura;
+- più file storici della stessa fonte possono convivere;
+- una nuova anteprima è obbligatoria dopo qualunque modifica del file o foglio.
 
-Prima della conferma l'utente vede: fonte, range, hash, numero righe, righe valide, errori, duplicati evidenti, colonne mancanti e fino a 20 esempi problematici. Non viene importato nulla finché non preme **Conferma**.
+## Minimizzazione dei dati personali
+
+L'export ordini contiene dati cliente non necessari ai margini. Il payload normalizzato e il raw consentito escludono nomi, indirizzi, email, telefoni, IMEI, seriali, URL e riferimenti di pagamento. Restano soltanto identificativi ordine/riga, date, stato, prodotto, quantità, paese, corriere, valuta e campi di matching autorizzati.
+
+## Anteprima
+
+Prima della conferma l'utente vede fonte, hash, copertura temporale, righe valide, ignorate, errori e avvisi. Nessun dato viene scritto finché non viene implementata e autorizzata la conferma persistente.

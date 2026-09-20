@@ -10,16 +10,20 @@ function positive(value) {
   return Number.isFinite(value) && value > 0;
 }
 
+export function roundMoney(value) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 export function canCreateEconomicMovement(source) {
   return source === 'invoice';
 }
 
 export function convertToEur(amount, currency, rule) {
   if (!Number.isFinite(amount)) return { status: 'suspended', code: 'INVALID_AMOUNT' };
-  if (currency === 'EUR') return { status: 'final', amountEur: amount, rate: 1, source: 'EUR' };
-  if (currency === 'SEK') return { status: 'final', amountEur: amount * 0.09, rate: 0.09, source: 'SEK_FORFAIT' };
+  if (currency === 'EUR') return { status: 'final', amountEur: roundMoney(amount), rate: 1, source: 'EUR' };
+  if (currency === 'SEK') return { status: 'final', amountEur: roundMoney(amount * 0.09), rate: 0.09, source: 'SEK_FORFAIT' };
   if (!rule || !positive(rule.eurPerUnit)) return { status: 'suspended', code: 'MISSING_FX_RULE' };
-  return { status: 'final', amountEur: amount * rule.eurPerUnit, rate: rule.eurPerUnit, source: rule.id };
+  return { status: 'final', amountEur: roundMoney(amount * rule.eurPerUnit), rate: rule.eurPerUnit, source: rule.id };
 }
 
 export function weightedAverageAt(entries, soldOn) {
@@ -49,6 +53,41 @@ export function selectProductCost({ soldOn, purchases = [], readyPurchasePrice, 
   if (positive(readyPurchasePrice)) return { status: 'final', unitCostEur: readyPurchasePrice, source: 'READY_PURCHASE_PRICE' };
   if (positive(readyFifoCost)) return { status: 'final', unitCostEur: readyFifoCost, source: 'READY_FIFO' };
   return { status: 'suspended', code: 'MISSING_PRODUCT_COST' };
+}
+
+export function firstPositiveSaleDate(movements) {
+  return movements
+    .filter((movement) => movement.movementType === 'sales' && movement.amount > 0 && movement.valueDate)
+    .map((movement) => movement.valueDate.slice(0, 10))
+    .sort()[0] ?? null;
+}
+
+export function effectiveParameter(parameters, key, onDate) {
+  if (!onDate) return null;
+  return parameters.find((parameter) =>
+    parameter.key === key &&
+    parameter.validFrom <= onDate &&
+    (!parameter.validTo || onDate < parameter.validTo)
+  ) ?? null;
+}
+
+export function calculateOrderCharges({ soldOn, positiveSalesEur, carriers = [], parameters = [] }) {
+  const uniqueCarriers = [...new Set(carriers.filter(Boolean))];
+  if (uniqueCarriers.length !== 1 || !['DHL', 'GLS'].includes(uniqueCarriers[0])) {
+    return { status: 'suspended', code: uniqueCarriers.length > 1 ? 'AMBIGUOUS_CARRIER' : 'MISSING_CARRIER' };
+  }
+  if (!Number.isFinite(positiveSalesEur) || positiveSalesEur < 0) return { status: 'suspended', code: 'INVALID_POSITIVE_SALES' };
+  const shipping = effectiveParameter(parameters, `shipping_${uniqueCarriers[0].toLowerCase()}`, soldOn);
+  const investor = effectiveParameter(parameters, 'investor_fee', soldOn);
+  const storfund = effectiveParameter(parameters, 'storfund_fee', soldOn);
+  const missing = [!shipping && 'shipping', !investor && 'investor_fee', !storfund && 'storfund_fee'].filter(Boolean);
+  if (missing.length) return { status: 'suspended', code: 'MISSING_PARAMETER', missing };
+  return {
+    status: 'final',
+    shippingEur: roundMoney(shipping.value),
+    investorFeeEur: roundMoney(positiveSalesEur * investor.value),
+    storfundFeeEur: roundMoney(positiveSalesEur * storfund.value)
+  };
 }
 
 export function salesMargin(input) {

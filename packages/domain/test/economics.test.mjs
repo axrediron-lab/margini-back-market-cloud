@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   aggregatePerformance,
+  calculateOrderCharges,
   canCreateEconomicMovement,
   companyMargin,
   convertToEur,
   coverage,
+  firstPositiveSaleDate,
   salesMargin,
   selectProductCost
 } from '../src/economics.mjs';
@@ -57,6 +59,7 @@ test('dal primo luglio applica P.Acq. poi FIFO e infine sospende', () => {
 
 test('SEK usa sempre il forfait 0,09 e altre valute richiedono una regola', () => {
   assert.deepEqual(convertToEur(100, 'SEK'), { status: 'final', amountEur: 9, rate: 0.09, source: 'SEK_FORFAIT' });
+  assert.equal(convertToEur(10.055, 'SEK').amountEur, 0.9);
   assert.equal(convertToEur(100, 'USD').status, 'suspended');
   assert.equal(convertToEur(100, 'USD', { id: 'fx1', eurPerUnit: 0.85 }).amountEur, 85);
 });
@@ -65,6 +68,29 @@ test('un componente mancante sospende il singolo margine senza usare zero', () =
   const result = salesMargin({ revenueEur: 200, initialInvoiceFeesEur: -20, productCostEur: 100, shippingEur: undefined, investorFeeEur: 2, storfundFeeEur: 2.4 });
   assert.equal(result.status, 'suspended');
   assert.deepEqual(result.missing, ['shippingEur']);
+});
+
+test('data vendita usa soltanto la prima sales positiva', () => {
+  const date = firstPositiveSaleDate([
+    { movementType: 'sales_dp_adjustment', amount: 10, valueDate: '2026-08-01' },
+    { movementType: 'sales', amount: -10, valueDate: '2026-08-02' },
+    { movementType: 'sales', amount: 100, valueDate: '2026-08-04' },
+    { movementType: 'sales', amount: 50, valueDate: '2026-08-03' }
+  ]);
+  assert.equal(date, '2026-08-03');
+});
+
+test('tariffe datate applicano una sola spedizione e percentuali sulle sales positive', () => {
+  const parameters = [
+    { key: 'shipping_dhl', validFrom: '2026-01-01', validTo: '2026-07-01', value: 15.5 },
+    { key: 'shipping_dhl', validFrom: '2026-07-01', validTo: null, value: 15 },
+    { key: 'investor_fee', validFrom: '2026-02-01', validTo: null, value: 0.01 },
+    { key: 'storfund_fee', validFrom: '2026-08-01', validTo: null, value: 0 }
+  ];
+  assert.deepEqual(calculateOrderCharges({ soldOn: '2026-08-10', positiveSalesEur: 199.99, carriers: ['DHL', 'DHL'], parameters }), {
+    status: 'final', shippingEur: 15, investorFeeEur: 2, storfundFeeEur: 0
+  });
+  assert.equal(calculateOrderCharges({ soldOn: '2026-08-10', positiveSalesEur: 100, carriers: ['DHL', 'GLS'], parameters }).code, 'AMBIGUOUS_CARRIER');
 });
 
 test('margine aziendale esclude flussi finanziari e segnala componenti non classificati', () => {
