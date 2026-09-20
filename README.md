@@ -9,12 +9,12 @@ Questa prima fase contiene specifica verificabile, schema PostgreSQL/Supabase, c
 |---|---|---|
 | Specifica economica e architetturale | Progettata | Regole vincolanti in `docs/` |
 | Schema Supabase/PostgreSQL | Implementato localmente | Migrazione SQL non applicata a istanze remote |
-| RLS e ruoli | Implementati localmente | Da validare su Supabase locale prima della creazione remota |
+| RLS e ruoli | Applicati localmente | Migrazione e lint superati; test autenticati con dati sintetici ancora da eseguire |
 | Import Google Sheets | Scaffolding | Edge Function con flusso Anteprima -> Validazione -> Conferma; nessuna chiamata reale |
 | Motore economico | Contratti e regole pure | Nessun calcolo su dati reali |
 | Interfaccia | Shell table-first V1 | Sette sezioni essenziali, nessun dato reale |
 | Test | Implementati e superati localmente | Regole economiche e controlli statici dello schema |
-| Supabase remoto | Progetto creato | Istanza sana; repository non collegato e nessuna migrazione applicata |
+| Supabase remoto | Progetto creato e checkout collegato | Nessuna migrazione applicata al database remoto |
 | Dati reali / deploy | **In attesa di autorizzazione** | Non eseguiti |
 
 ## Avvio locale della sola interfaccia
@@ -59,4 +59,4 @@ scripts/                      verifiche statiche locali
 
 ## Passo successivo, non autorizzato in questa fase
 
-Collegare esplicitamente il checkout al progetto Supabase, validare la migrazione e le RLS con dati sintetici, quindi applicare lo schema remoto soltanto dopo una revisione separata. Il progetto remoto esiste, ma non contiene ancora lo schema applicativo e non è collegato a deploy automatici GitHub.
+Completare il test locale delle RLS con dati sintetici e preparare il dry-run remoto. Lo schema potrà essere applicato al progetto Supabase online soltanto dopo una revisione e un'autorizzazione separate; non esistono deploy automatici da GitHub.

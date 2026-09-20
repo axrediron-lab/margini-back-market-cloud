@@ -40,4 +40,4 @@ Non usare `supabase db reset --linked`: distrugge e ricrea il database remoto. I
 
 ## Stato del PC
 
-La CLI Supabase è installata come dipendenza del progetto e resta versionata nel `package-lock.json`. Per il database locale completo serve ancora un runtime Docker compatibile. Fino ad allora sono disponibili UI locale, test economici e controlli statici; nessuna limitazione obbliga a pubblicare le modifiche.
+La CLI Supabase è installata come dipendenza del progetto e resta versionata nel `package-lock.json`. Docker Desktop e Supabase locale sono operativi: la migrazione iniziale è stata applicata e il lint non rileva errori. UI, test economici e database possono quindi essere sviluppati e verificati senza pubblicare modifiche.

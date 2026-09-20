@@ -7,13 +7,14 @@
 | Regole dominio | `node --test packages/domain/test/*.test.mjs` | tutti i test passano |
 | Completezza scaffolding | `node scripts/verify-scaffold.mjs` | file e marker richiesti presenti |
 | Tutto | `npm test` | exit code 0 |
-| UI statica | `python -m http.server 4173` da `apps/web` | nove schermate navigabili |
+| UI statica | `npm run dev` | sette schermate navigabili su `http://127.0.0.1:4173` |
+| Schema locale | `npm run supabase:lint` | nessun errore SQL |
 
 ## Gate successivi
 
-### Gate A — Supabase locale
+### Gate A — Supabase locale (completato per migrazione e lint)
 
-Richiede nuova autorizzazione se comporta installazioni/download. Attività: avvio stack locale, applicazione migrazione, lint SQL, test indici/vincoli/RLS, seed esclusivamente sintetico.
+Docker e lo stack Supabase locale sono installati e funzionanti. La migrazione iniziale è stata applicata e il lint SQL è superato. Rimangono facoltativi i test autenticati di indici, vincoli e RLS con seed esclusivamente sintetico.
 
 ### Gate B — lettura V2 offline
 
@@ -30,10 +31,8 @@ Richiede autorizzazione esplicita distinta per: creazione progetto, configurazio
 ## Cosa non è stato eseguito
 
 - nessun accesso alla V2 offline;
-- nessun download o installazione;
-- nessun `supabase init/start/link/db push`;
-- nessuna creazione di progetto o risorsa cloud;
-- nessuna credenziale letta o salvata;
+- nessun `supabase db push`;
+- nessuna credenziale applicativa salvata nel repository;
 - nessun CSV/XLSX operativo copiato;
 - nessun dato reale importato;
 - nessun deploy o pubblicazione.
