@@ -161,6 +161,19 @@ export async function handleImportApi(request, response, pathname) {
     return true;
   }
 
+  const orderMatch = pathname.match(/^\/api\/orders\/(\d+)$/);
+  if (request.method === 'GET' && orderMatch) {
+    try {
+      const { loadOrderDetail } = await import('./local-calculation.mjs');
+      const detail = await loadOrderDetail(orderMatch[1]);
+      json(response, detail ? 200 : 404, detail ? { detail } : { error: 'ORDER_NOT_FOUND' });
+    } catch (error) {
+      const code = String(error.message || 'ORDER_DETAIL_FAILED').split(':')[0];
+      json(response, code === 'INVALID_ORDER_ID' ? 400 : 503, { error: code });
+    }
+    return true;
+  }
+
   if (request.method === 'POST' && pathname === '/api/recalculate') {
     try {
       const { calculateLocalSnapshot } = await import('./local-calculation.mjs');

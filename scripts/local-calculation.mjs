@@ -43,20 +43,29 @@ export async function loadLocalDashboard() {
   const runs = await request('calculation_runs?select=id,created_at,period_start,period_end,coverage,engine_version&status=eq.complete&order=created_at.desc&limit=1');
   if (!runs.length) return null;
   const run = runs[0];
-  const [rows, orders, returns, links, anomalies, parameters] = await Promise.all([
+  const [rows, orders, lines, returns, links, anomalies, parameters] = await Promise.all([
     fetchAll('margin_results', 'order_id,result_date,component,economic_category,amount_eur,status', `run_id=eq.${run.id}&result_type=eq.sales`),
     fetchAll('orders', 'id,marketplace_order_id'),
+    fetchAll('order_lines', 'order_id,carrier,line_origin'),
     fetchAll('returns', 'id'),
     fetchAll('return_links', 'return_id,status'),
     fetchAll('anomalies', 'code,severity,resolved_at'),
     fetchAll('parameters', 'key,valid_from,valid_to,value,unit,note')
   ]);
   const marketplaceIds = new Map(orders.map((order) => [order.id, order.marketplace_order_id]));
+  const carriersByOrder = new Map();
+  for (const line of lines) {
+    if (line.line_origin !== 'READY' || !line.carrier) continue;
+    const carriers = carriersByOrder.get(line.order_id) ?? new Set();
+    carriers.add(line.carrier.trim().toUpperCase());
+    carriersByOrder.set(line.order_id, carriers);
+  }
   const orderMap = new Map();
   for (const row of rows) {
     if (!row.order_id) continue;
     const item = orderMap.get(row.order_id) ?? {
-      id: row.order_id, marketplaceOrderId: marketplaceIds.get(row.order_id), date: row.result_date, status: row.status
+      id: row.order_id, marketplaceOrderId: marketplaceIds.get(row.order_id), date: row.result_date,
+      carrier: [...(carriersByOrder.get(row.order_id) ?? [])].join(' + ') || null, status: row.status
     };
     item[row.component] = number(row.amount_eur);
     if (row.status === 'suspended') item.status = 'suspended';
@@ -104,9 +113,95 @@ export async function loadLocalDashboard() {
     },
     daily,
     monthly,
-    latestOrders: orderResults.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30),
+    latestOrders: orderResults.sort((a, b) => b.date.localeCompare(a.date) || String(b.marketplaceOrderId).localeCompare(String(a.marketplaceOrderId))),
     anomalyCounts: Object.fromEntries(openAnomalies.reduce((map, anomaly) => map.set(anomaly.code, (map.get(anomaly.code) ?? 0) + 1), new Map())),
     parameters
+  };
+}
+
+const costSourceLabels = {
+  DATED_WEIGHTED_AVERAGE: 'Acquisti',
+  READY_PURCHASE_PRICE: 'P.Acq.',
+  READY_FIFO: 'FIFO'
+};
+
+async function provenanceFor(sourceRowIds) {
+  const ids = [...new Set(sourceRowIds.filter((id) => id !== null && id !== undefined))];
+  if (!ids.length) return new Map();
+  const rows = await fetchAll('import_rows', 'id,batch_id,row_number', `id=in.(${ids.join(',')})`);
+  const batchIds = [...new Set(rows.map((row) => row.batch_id))];
+  const batches = batchIds.length
+    ? await fetchAll('import_batches', 'id,source,source_name', `id=in.(${batchIds.join(',')})`)
+    : [];
+  const batchById = new Map(batches.map((batch) => [batch.id, batch]));
+  return new Map(rows.map((row) => {
+    const batch = batchById.get(row.batch_id);
+    return [String(row.id), {
+      source: batch?.source ?? null,
+      sourceName: batch?.source_name ?? null,
+      rowNumber: row.row_number
+    }];
+  }));
+}
+
+export async function loadOrderDetail(marketplaceOrderId) {
+  const orderId = String(marketplaceOrderId ?? '').trim();
+  if (!/^\d+$/.test(orderId)) throw new Error('INVALID_ORDER_ID');
+  const [order] = await request(`orders?select=id,marketplace_order_id,sold_at,currency,provisional&marketplace_order_id=eq.${orderId}&limit=1`);
+  if (!order) return null;
+  const [run] = await request('calculation_runs?select=id,created_at,engine_version&status=eq.complete&order=created_at.desc&limit=1');
+  if (!run) return null;
+  const [results, lines, movements] = await Promise.all([
+    fetchAll('margin_results', 'component,economic_category,amount_eur,status,source_refs,details', `run_id=eq.${run.id}&result_type=eq.sales&order_id=eq.${order.id}`),
+    fetchAll('order_lines', 'id,source_row_id,product_code,sku,description,quantity,unit_price,ready_purchase_price,ready_fifo_cost,carrier,line_origin,document_type,document_number,document_date', `order_id=eq.${order.id}&order=line_origin.asc`),
+    fetchAll('invoice_movements', 'id,source_row_id,movement_type,value_date,amount,currency,amount_eur,economic_category,financial_flow,designation,sku', `order_id=eq.${order.id}&order=value_date.asc`)
+  ]);
+  const marginResult = results.find((row) => row.component === 'margin');
+  const costSelections = marginResult?.details?.costSources ?? [];
+  const selectedCostIds = [...new Set(costSelections.flatMap((selection) => selection.sourceIds ?? []))];
+  const selectedCosts = selectedCostIds.length
+    ? await fetchAll('cost_entries', 'id,source_row_id,product_code,available_on,quantity,unit_cost_eur', `id=in.(${selectedCostIds.join(',')})`)
+    : [];
+  const sourceRowIds = [
+    ...lines.map((line) => line.source_row_id),
+    ...movements.map((movement) => movement.source_row_id),
+    ...selectedCosts.map((cost) => cost.source_row_id)
+  ];
+  const provenance = await provenanceFor(sourceRowIds);
+  const selectedCostsById = new Map(selectedCosts.map((cost) => [cost.id, cost]));
+  const selectionByLine = new Map(costSelections.map((selection) => [selection.orderLineId, selection]));
+  const withProvenance = (row) => ({ ...row, provenance: provenance.get(String(row.source_row_id)) ?? null });
+  return {
+    run: { id: run.id, createdAt: run.created_at, engineVersion: run.engine_version },
+    order: {
+      marketplaceOrderId: order.marketplace_order_id,
+      soldAt: order.sold_at,
+      currency: order.currency,
+      provisional: order.provisional,
+      status: marginResult?.status ?? null,
+      carrier: [...new Set(lines.filter((line) => line.line_origin === 'READY' && line.carrier).map((line) => line.carrier.trim().toUpperCase()))].join(' + ') || null
+    },
+    components: results.map(({ component, economic_category: economicCategory, amount_eur: amountEur, status }) => ({ component, economicCategory, amountEur, status })),
+    lines: lines.map((line) => {
+      const selection = selectionByLine.get(line.id);
+      const sources = (selection?.sourceIds ?? []).map((id) => selectedCostsById.get(id)).filter(Boolean).map(withProvenance);
+      const weightedQuantity = sources.reduce((sum, source) => sum + number(source.quantity), 0);
+      const weightedValue = sources.reduce((sum, source) => sum + number(source.quantity) * number(source.unit_cost_eur), 0);
+      const unitCostEur = selection?.source === 'READY_PURCHASE_PRICE' ? number(line.ready_purchase_price)
+        : selection?.source === 'READY_FIFO' ? number(line.ready_fifo_cost)
+          : weightedQuantity ? roundMoney(weightedValue / weightedQuantity) : null;
+      return {
+        ...withProvenance(line),
+        costSelection: selection ? {
+          source: selection.source,
+          sourceLabel: costSourceLabels[selection.source] ?? selection.source ?? 'Non disponibile',
+          code: selection.code ?? null,
+          unitCostEur,
+          sources
+        } : null
+      };
+    }),
+    movements: movements.map(withProvenance)
   };
 }
 
