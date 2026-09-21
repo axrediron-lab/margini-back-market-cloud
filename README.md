@@ -1,6 +1,6 @@
 # Margini Back Market Cloud
 
-Nuovo progetto locale, completamente separato da **Margini Back Market V2**.
+Progetto cloud separato da **Margini Back Market V2**, con ambiente locale per le prove.
 Contiene specifica verificabile, schema PostgreSQL/Supabase, importazione e ricalcolo locali, e codice per il percorso online descritto in `docs/09_ATTIVAZIONE_ONLINE.md`. Non contiene CSV operativi o credenziali.
 
 ## Stato della fase
@@ -16,8 +16,8 @@ Contiene specifica verificabile, schema PostgreSQL/Supabase, importazione e rica
 | Test | Implementati e superati localmente | Regole economiche, parser reali, privacy e controlli statici dello schema |
 | Supabase remoto | Schema e due funzioni Edge distribuiti | `online-api` e `import-google-sheet` attive con verifica JWT; accesso anonimo 401 |
 | Dati reali locali | Importati e calcolati | Sei file nel solo Supabase locale; nessun CSV nel repository |
-| Codice online | Implementato localmente, non collaudato end-to-end | Auth, API, CSV/Fogli Google e UI; limiti Edge da verificare |
-| Sito online | **Non pubblicato** | Hosting, utente Auth, origine CORS e Google non ancora configurati; nessun dato reale remoto |
+| Codice online | Pubblicato, non collaudato end-to-end | Auth, API, CSV/Fogli Google e UI; limiti Edge da verificare |
+| Sito online | Pubblicato su GitHub Pages gratuito | Admin invitato; accesso da completare, Google da configurare e nessun dato reale remoto |
 
 ## Avvio locale della sola interfaccia
 
