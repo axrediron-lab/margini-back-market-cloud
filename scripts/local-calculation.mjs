@@ -7,12 +7,14 @@ import {
   salesMargin,
   selectProductCost
 } from '../packages/domain/src/economics.mjs';
-import { getLocalCredentials } from './local-import-api.mjs';
 
 const PAGE_SIZE = 1000;
 
 async function request(path, options = {}) {
-  const { url, key } = getLocalCredentials();
+  const { url, key } = typeof Deno === 'undefined'
+    ? (await import('./local-import-api.mjs')).getLocalCredentials()
+    : { url: Deno.env.get('SUPABASE_URL'), key: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') };
+  if (!url || !key) throw new Error('SUPABASE_CREDENTIALS_UNAVAILABLE');
   const response = await fetch(`${url}/rest/v1/${path}`, {
     ...options,
     headers: {
@@ -284,7 +286,7 @@ function resultRow({ resultType, resultDate, orderId = null, component, economic
   return { resultType, resultDate, orderId, component, economicCategory, amountEur, status, sourceRefs, details };
 }
 
-export async function calculateLocalSnapshot({ persist = true } = {}) {
+export async function calculateLocalSnapshot({ persist = true, actorId = null } = {}) {
   await rpc('materialize_imports');
   const [orders, lines, movements, costs, parameters, batches] = await Promise.all([
     fetchAll('orders', 'id,marketplace_order_id,sold_at,provisional'),
@@ -440,17 +442,21 @@ export async function calculateLocalSnapshot({ persist = true } = {}) {
 
   let runId = null;
   if (persist && dates.length) {
-    const rules = await readFile(new URL('../packages/domain/src/economics.mjs', import.meta.url));
-    runId = await rpc('save_calculation_run', {
-      p_engine_version: 'v1.0.0-local',
-      p_rules_hash: createHash('sha256').update(rules).digest('hex'),
+    const rulesHash = typeof Deno === 'undefined'
+      ? createHash('sha256').update(await readFile(new URL('../packages/domain/src/economics.mjs', import.meta.url))).digest('hex')
+      : Deno.env.get('ECONOMICS_RULES_SHA256');
+    if (!rulesHash || !/^[0-9a-f]{64}$/.test(rulesHash)) throw new Error('ECONOMICS_RULES_HASH_UNAVAILABLE');
+    runId = await rpc(actorId ? 'save_calculation_run_online' : 'save_calculation_run', {
+      p_engine_version: typeof Deno === 'undefined' ? 'v1.0.0-local' : 'v1.0.0-online',
+      p_rules_hash: rulesHash,
       p_period_start: dates[0],
       p_period_end: dates.at(-1),
       p_input_batch_ids: batches.filter((batch) => batch.is_active && batch.status === 'imported').map((batch) => batch.id),
       p_parameter_values: economicParameters,
       p_coverage: coverage,
       p_results: results,
-      p_anomalies: anomalies
+      p_anomalies: anomalies,
+      ...(actorId ? { p_actor: actorId } : {})
     });
   }
   return { runId, coverage, resultRows: results.length, anomalies: anomalies.length };

@@ -7,3 +7,4 @@
 @media(max-width:1150px){.import-result{grid-template-columns:1fr 1fr}.import-result>div:last-child{justify-self:start}}
 @media(max-width:950px){.summary-grid{grid-template-columns:1fr}}
 @media(max-width:620px){.import-result{grid-template-columns:1fr}}
+.login-overlay{position:fixed;inset:0;z-index:100;background:rgba(13,32,23,.72);display:grid;place-items:center;padding:20px}.login-card{width:min(420px,100%);background:#fff;border-radius:12px;padding:28px;box-shadow:0 20px 70px rgba(0,0,0,.2)}.login-card h2{margin:0 0 6px}.login-card p{color:#69736c}.login-card label{display:block;margin:15px 0 5px}.login-card input{width:100%;padding:10px;border:1px solid #dfe5df;border-radius:7px}.login-card button{margin-top:18px;width:100%}.login-error{color:#9d3232!important;min-height:20px}

@@ -1,3 +1,5 @@
+import { apiFetch, isOnline } from './transport.js';
+
 const screens = ['Riepilogo','Ordini e margini','Costi','Resi','Importazioni','Da controllare','Impostazioni'];
 const icons = ['⌂','#','€','↩','⇧','!','⚙'];
 const nav = document.querySelector('#nav');
@@ -33,7 +35,7 @@ function ordersScreen(){const s=dashboard?.summary;const avg=s?.coveredOrders?s.
 
 const costTypeLabels={purchase:'Acquisti',ready_purchase_price:'P.Acq.',ready_fifo:'FIFO'};
 const linkStatusLabels={linked:'Collegato',unmatched:'Non collegato',candidate:'Candidato',ambiguous:'Ambiguo',rejected:'Rifiutato',manual:'Manuale'};
-const loadingOperations=()=>'<section class="card"><div class="empty"><strong>Caricamento dati operativi…</strong>Sto preparando righe e provenienza dal database locale.</div></section>';
+const loadingOperations=()=>`<section class="card"><div class="empty"><strong>Caricamento dati operativi…</strong>Sto preparando righe e provenienza dal database ${isOnline?'online':'locale'}.</div></section>`;
 const monthOptions=(rows,dateKey,current)=>[...new Set(rows.map((row)=>row[dateKey]?.slice(0,7)).filter(Boolean))].sort().reverse().map((value)=>`<option value="${value}" ${value===current?'selected':''}>${value}</option>`).join('');
 
 function filteredCosts(){const query=costFilters.search.trim().toLowerCase();return (operations?.costs??[]).filter((row)=>(!query||String(row.productCode).toLowerCase().includes(query)||String(row.provenance?.sourceName||'').toLowerCase().includes(query))&&(costFilters.month==='all'||row.availableOn.startsWith(costFilters.month))&&(costFilters.type==='all'||row.costType===costFilters.type))}
@@ -48,17 +50,17 @@ function filteredControls(){const query=controlFilters.search.trim().toLowerCase
 function controlRows(rows){return rows.length?rows.slice(0,100).map((row)=>`<tr><td><span class="pill ${row.severity==='blocking'?'red':'amber'}">${row.severity==='blocking'?'Bloccante':'Avviso'}</span></td><td><strong>${escapeHtml(row.code)}</strong><small>${escapeHtml(row.message)}</small></td><td>${escapeHtml(row.reference||'—')}<small>${escapeHtml(row.productCode||'')}</small></td><td><small>${row.provenance?provenance(row):'Generata dal calcolo'}</small></td></tr>`).join(''):emptyRow(4)}
 function controlsScreen(){const a=dashboard?.anomalyCounts??{};const blocking=(a.MISSING_COST??0)+(a.MISSING_CARRIER??0)+(a.AMBIGUOUS_CARRIER??0)+(a.UNLINKED_ORDER??0);if(!operations)return loadingOperations();const rows=filteredControls();const codes=[...new Set(operations.anomalies.map((row)=>row.code))].sort();return `<div class="toolbar"><input id="control-search" aria-label="Cerca controllo" placeholder="Cerca ordine, prodotto o controllo…" value="${escapeHtml(controlFilters.search)}"><select id="control-code"><option value="all">Tutti i controlli</option>${codes.map((value)=>`<option value="${value}" ${value===controlFilters.code?'selected':''}>${escapeHtml(value)}</option>`).join('')}</select><select id="control-severity"><option value="all">Tutte le priorità</option><option value="blocking" ${controlFilters.severity==='blocking'?'selected':''}>Bloccanti</option><option value="warning" ${controlFilters.severity==='warning'?'selected':''}>Avvisi</option></select></div><div class="kpis">${kpi('Bloccanti',dashboard?blocking:'—','Numeri esclusi dai totali')}${kpi('Costo mancante',a.MISSING_COST??0,'Ordini sospesi')}${kpi('Resi non collegati',a.UNLINKED_RETURN??0,'Revisione manuale')}${kpi('Non classificati',a.UNCLASSIFIED_MOVEMENT??0,'Movimenti Invoice')}</div><section class="card table-card"><div class="table-title"><strong>Controlli aperti</strong><span id="control-count">Mostrati ${Math.min(rows.length,100)} di ${rows.length}</span></div><table><thead><tr><th>Priorità</th><th>Controllo</th><th>Riferimento</th><th>Provenienza</th></tr></thead><tbody id="control-body">${controlRows(rows)}</tbody></table></section>`}
 
-function importsScreen(){return `<div class="import-grid"><section class="card import-form"><div class="steps"><span class="step current">1 Anteprima</span><span class="step">2 Validazione</span><span class="step">3 Conferma</span></div><h2>Importa CSV sul database locale</h2><label for="csv-files">Seleziona uno o più file</label><input id="csv-files" type="file" accept=".csv,text/csv" multiple><p class="footnote">La fonte viene riconosciuta dalle intestazioni. Il file non entra nel repository e l’anteprima non scrive nel database.</p><button class="primary" id="preview">Analizza file</button></section><aside class="card help"><h3>Controlli essenziali</h3><ul><li>intestazioni e tipi</li><li>hash del file e riga fisica</li><li>dati mancanti o non classificati</li><li>conferma manuale, mai automatica</li></ul><p id="import-message" class="footnote">Pronto per una prova locale.</p></aside></div><section class="card table-card spaced"><div class="table-title"><strong>Anteprime</strong><span id="preview-count">Nessun file analizzato</span></div><div id="import-results" class="import-results"><div class="empty"><strong>Nessuna anteprima</strong>Seleziona i CSV e analizzali insieme.</div></div></section>`}
+function importsScreen(){return `<div class="import-grid"><section class="card import-form"><div class="steps"><span class="step current">1 Anteprima</span><span class="step">2 Validazione</span><span class="step">3 Conferma</span></div><h2>Importa CSV sul database ${isOnline?'online':'locale'}</h2><label for="csv-files">Seleziona uno o più file</label><input id="csv-files" type="file" accept=".csv,text/csv" multiple><p class="footnote">La fonte viene riconosciuta dalle intestazioni. Il file non entra nel repository e l’anteprima non scrive nel database.</p><button class="primary" id="preview">Analizza file</button>${isOnline?`<hr><h3>Oppure importa da Fogli Google</h3><label for="sheet-id">ID del foglio</label><input id="sheet-id" autocomplete="off" placeholder="ID del foglio autorizzato"><label for="sheet-range">Intervallo</label><input id="sheet-range" autocomplete="off" placeholder="Foglio1!A1:Z5000"><button class="primary" id="preview-sheet">Analizza foglio</button><p class="footnote">Il foglio deve essere nella lista autorizzata e condiviso in sola lettura con l’account di servizio.</p>`:''}</section><aside class="card help"><h3>Controlli essenziali</h3><ul><li>intestazioni e tipi</li><li>hash del file e riga fisica</li><li>dati mancanti o non classificati</li><li>conferma manuale, mai automatica</li></ul><p id="import-message" class="footnote">Pronto per l’anteprima.</p></aside></div><section class="card table-card spaced"><div class="table-title"><strong>Anteprime</strong><span id="preview-count">Nessun file analizzato</span></div><div id="import-results" class="import-results"><div class="empty"><strong>Nessuna anteprima</strong>Seleziona i CSV e analizzali insieme.</div></div></section>`}
 
 const sourceLabels={invoice:'Invoice Back Market',orders:'Export ordini Back Market',ready_sales:'Vendite Ready',purchases:'Costi / Acquisti',ready_returns:'Resi Ready'};
 const escapeHtml=(value)=>String(value).replace(/[&<>'"]/g,(char)=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
-const errorLabels={UNKNOWN_SOURCE_HEADERS:'Intestazioni non riconosciute',FILE_TOO_LARGE:'File troppo grande',EMPTY_FILE:'File vuoto',INVALID_JSON:'Richiesta non valida',PREVIEW_EXPIRED:'Anteprima scaduta: analizza di nuovo il file',PREVIEW_HASH_MISMATCH:'Il contenuto non corrisponde più all’anteprima',PREVIEW_HAS_ERRORS:'Correggi gli errori prima di confermare',LOCAL_SUPABASE_UNAVAILABLE:'Supabase locale non è avviato',LOCAL_SUPABASE_CREDENTIALS_UNAVAILABLE:'Configurazione Supabase locale non disponibile',REMOTE_SUPABASE_BLOCKED:'L’operatore locale rifiuta connessioni a Supabase remoto',LOCAL_DATABASE_ERROR:'Errore del database locale'};
+const errorLabels={UNKNOWN_SOURCE_HEADERS:'Intestazioni non riconosciute',FILE_TOO_LARGE:'File troppo grande',EMPTY_FILE:'File vuoto',INVALID_JSON:'Richiesta non valida',PREVIEW_EXPIRED:'Anteprima scaduta: analizza di nuovo il file',PREVIEW_HASH_MISMATCH:'Il contenuto non corrisponde più all’anteprima',PREVIEW_HAS_ERRORS:'Correggi gli errori prima di confermare',LOCAL_SUPABASE_UNAVAILABLE:'Supabase locale non è avviato',LOCAL_SUPABASE_CREDENTIALS_UNAVAILABLE:'Configurazione Supabase locale non disponibile',REMOTE_SUPABASE_BLOCKED:'L’operatore locale rifiuta connessioni a Supabase remoto',LOCAL_DATABASE_ERROR:'Errore del database locale',ONLINE_CONFIG_MISSING:'Configurazione online non ancora attivata',OPERATOR_REQUIRED:'Serve un account operatore autorizzato',ACCESS_DENIED:'Account non abilitato',SHEET_NOT_ALLOWED:'Foglio non autorizzato',GOOGLE_NOT_CONFIGURED:'Collegamento Google non ancora configurato'};
 const importState=[];
 
 function importCard(item){
   if(item.error)return `<article class="import-result error"><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(errorLabels[item.error]||item.error)}</span></article>`;
   const p=item.preview;const issueText=p.issues.length?`${p.issues.length} anomalie mostrate su massimo 20`:'Nessuna anomalia';
-  const action=p.saved?`<span class="pill green">${p.inserted?'Importato':'Già presente'}</span>`:p.canConfirm?`<button class="confirm-import" data-preview-id="${p.previewId}" data-hash="${p.contentSha256}">Conferma nel database locale</button>`:`<span class="pill red">Correzione necessaria</span>`;
+  const action=p.saved?`<span class="pill green">${p.inserted?'Importato':'Già presente'}</span>`:p.canConfirm?`<button class="confirm-import" data-preview-id="${p.previewId}" data-hash="${p.contentSha256}">Conferma nel database ${isOnline?'online':'locale'}</button>`:`<span class="pill red">Correzione necessaria</span>`;
   return `<article class="import-result"><div><strong>${escapeHtml(p.sourceName)}</strong><small>${escapeHtml(sourceLabels[p.source]||p.source)} · righe ${p.rowCount}</small></div><div class="import-metrics"><span>Valide <b>${p.validCount}</b></span><span>Errori <b>${p.errorCount}</b></span><span>Avvisi <b>${p.warningCount}</b></span><span>Ignorate <b>${p.ignoredCount}</b></span></div><small>${issueText}</small><div>${action}</div></article>`;
 }
 
@@ -77,20 +79,34 @@ function setupImports(){
     message.textContent=`Analisi di ${files.length} file in corso…`;importState.length=0;renderImports();
     for(const file of files){
       try{
-        const response=await fetch('/api/imports/preview',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceName:file.name,content:await file.text()})});
-        importState.push({name:file.name,preview:await parseResponse(response)});
+        const payload={kind:'csv',sourceName:file.name,content:await file.text()};
+        const response=await apiFetch('/api/imports/preview',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+        importState.push({name:file.name,payload,preview:await parseResponse(response)});
       }catch(error){importState.push({name:file.name,error:error.message})}
       renderImports();
     }
     message.textContent='Anteprima completata. Controlla i conteggi prima di confermare.';
   });
+  document.querySelector('#preview-sheet')?.addEventListener('click',async()=>{
+    const message=document.querySelector('#import-message');
+    const spreadsheetId=document.querySelector('#sheet-id').value.trim();
+    const range=document.querySelector('#sheet-range').value.trim();
+    if(!spreadsheetId||!range){message.textContent='Indica ID e intervallo del foglio.';return}
+    const payload={kind:'sheet',sourceName:`Google Sheets ${spreadsheetId.slice(0,16)} · ${range}`,spreadsheetId,range};
+    message.textContent='Lettura e anteprima del foglio in corso…';
+    try{const response=await apiFetch('/api/imports/preview',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});importState.push({name:payload.sourceName,payload,preview:await parseResponse(response)});message.textContent='Anteprima completata. Controlla i conteggi prima di confermare.'}
+    catch(error){message.textContent=errorLabels[error.message]||error.message}
+    renderImports();
+  });
   document.querySelector('#import-results')?.addEventListener('click',async(event)=>{
     const button=event.target.closest('.confirm-import');if(!button)return;
     button.disabled=true;button.textContent='Conferma in corso…';
     try{
-      const response=await fetch('/api/imports/confirm',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({previewId:button.dataset.previewId,contentSha256:button.dataset.hash})});
-      const saved=await parseResponse(response);const item=importState.find((entry)=>entry.preview?.previewId===button.dataset.previewId);Object.assign(item.preview,{saved:true,...saved});renderImports();
-      document.querySelector('#import-message').textContent=saved.inserted?'Batch salvato nel database locale.':'Questo identico file era già presente: nessuna duplicazione.';
+      const item=importState.find((entry)=>entry.preview?.previewId===button.dataset.previewId);
+      const confirmBody=isOnline?{...item.payload,previewId:button.dataset.previewId,previewHash:button.dataset.hash}:{previewId:button.dataset.previewId,contentSha256:button.dataset.hash};
+      const response=await apiFetch('/api/imports/confirm',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(confirmBody)});
+      const saved=await parseResponse(response);Object.assign(item.preview,{saved:true,...saved});renderImports();
+      document.querySelector('#import-message').textContent=saved.inserted?`Batch salvato nel database ${isOnline?'online':'locale'}.`:'Questo identico file era già presente: nessuna duplicazione.';
     }catch(error){button.disabled=false;button.textContent='Riprova conferma';document.querySelector('#import-message').textContent=errorLabels[error.message]||error.message}
   });
 }
@@ -115,7 +131,7 @@ function setupOperationalFilters(kind){
 
 async function ensureOperations(){
   if(operations||operationsLoading)return;operationsLoading=true;
-  try{const payload=await parseResponse(await fetch('/api/operations'));operations=payload.operations;if(['Costi','Resi','Da controllare'].includes(currentScreen))show(currentScreen)}
+  try{const payload=await parseResponse(await apiFetch('/api/operations'));operations=payload.operations;if(['Costi','Resi','Da controllare'].includes(currentScreen))show(currentScreen)}
   catch(error){const message=errorLabels[error.message]||error.message;content.innerHTML=`<section class="card"><div class="empty"><strong>Dati operativi non disponibili</strong>${escapeHtml(message)}</div></section>`}
   finally{operationsLoading=false}
 }
@@ -135,7 +151,7 @@ function renderOrderDetail(detail){
   dialog.innerHTML=`<div class="detail-head"><div><small>DETTAGLIO ORDINE</small><h2>${escapeHtml(order.marketplaceOrderId)}</h2><p>${escapeHtml((order.soldAt||'').slice(0,10))} · ${escapeHtml(order.carrier||'Vettore non disponibile')} · ${statusPill(order.status)}</p></div><button class="detail-close" aria-label="Chiudi">×</button></div><div class="detail-grid"><section><h3>Composizione del margine</h3><table><thead><tr><th>Voce</th><th>Importo</th><th>Stato</th></tr></thead><tbody>${components}</tbody></table></section><section><h3>Righe prodotto e costo scelto</h3><table><thead><tr><th>Prodotto</th><th>Qtà</th><th>Prezzo Ready</th><th>Fonte costo</th><th>Vettore</th><th>Provenienza</th></tr></thead><tbody>${lines}</tbody></table></section><section><h3>Movimenti Invoice</h3><table><thead><tr><th>Data</th><th>Movimento</th><th>Originale</th><th>EUR</th><th>Provenienza</th></tr></thead><tbody>${movements}</tbody></table></section></div><footer>Calcolo ${escapeHtml(detail.run.engineVersion)} · fonti tracciate fino alla riga CSV originale</footer>`;
   dialog.querySelector('.detail-close').addEventListener('click',()=>dialog.close());if(!dialog.open)dialog.showModal();
 }
-async function openOrderDetail(orderId){const dialog=ensureOrderDialog();dialog.innerHTML='<div class="detail-loading">Caricamento dettaglio…</div>';if(!dialog.open)dialog.showModal();try{const payload=await parseResponse(await fetch(`/api/orders/${encodeURIComponent(orderId)}`));renderOrderDetail(payload.detail)}catch(error){dialog.innerHTML=`<div class="detail-loading"><strong>Dettaglio non disponibile</strong><p>${escapeHtml(errorLabels[error.message]||error.message)}</p><button class="detail-close">Chiudi</button></div>`;dialog.querySelector('.detail-close').addEventListener('click',()=>dialog.close())}}
+async function openOrderDetail(orderId){const dialog=ensureOrderDialog();dialog.innerHTML='<div class="detail-loading">Caricamento dettaglio…</div>';if(!dialog.open)dialog.showModal();try{const payload=await parseResponse(await apiFetch(`/api/orders/${encodeURIComponent(orderId)}`));renderOrderDetail(payload.detail)}catch(error){dialog.innerHTML=`<div class="detail-loading"><strong>Dettaglio non disponibile</strong><p>${escapeHtml(errorLabels[error.message]||error.message)}</p><button class="detail-close">Chiudi</button></div>`;dialog.querySelector('.detail-close').addEventListener('click',()=>dialog.close())}}
 
 const csvCell=(value)=>{let text=value===null||value===undefined?'':String(value);if(typeof value==='string'&&/^[=+\-@]/.test(text))text=`'${text}`;return `"${text.replaceAll('"','""')}"`};
 const sourceText=(row)=>row?.provenance?`${row.provenance.sourceName} - riga ${row.provenance.rowNumber}`:'';
@@ -153,9 +169,10 @@ function exportCurrentScreen(){const definition=exportDefinition();if(!definitio
 function settingsScreen(){const params=dashboard?.parameters??[];const latest=(key)=>params.filter((p)=>p.key===key).sort((a,b)=>b.valid_from.localeCompare(a.valid_from))[0];const rate=(key)=>{const p=latest(key);if(!p)return '—';return p.unit==='PERCENT_OF_SALES'?percent(Number(p.value)*100):money(p.value)};return `<div class="kpis">${kpi('DHL',rate('shipping_dhl'),'EUR per ordine')}${kpi('GLS',rate('shipping_gls'),'EUR per ordine')}${kpi('Investor Fee',rate('investor_fee'),'% vendite')}${kpi('Storfund Fee',rate('storfund_fee'),'% vendite')}</div><section class="card table-card"><div class="table-title"><strong>Parametri economici</strong><span>Valori con decorrenza</span></div><table><thead><tr><th>Parametro</th><th>Dal</th><th>Al</th><th>Valore</th><th>Nota</th></tr></thead><tbody>${params.length?params.map((p)=>`<tr><td>${escapeHtml(p.key)}</td><td>${p.valid_from}</td><td>${p.valid_to||'in corso'}</td><td>${p.unit==='PERCENT_OF_SALES'?percent(Number(p.value)*100):money(p.value)}</td><td>${escapeHtml(p.note)}</td></tr>`).join(''):emptyRow(5)}</tbody></table></section>`}
 
 function show(screen){currentScreen=screen;title.textContent=screen;[...nav.children].forEach((button)=>button.classList.toggle('active',button.textContent.includes(screen)));const render={'Riepilogo':summaryScreen,'Ordini e margini':ordersScreen,'Costi':costsScreen,'Resi':returnsScreen,'Importazioni':importsScreen,'Da controllare':controlsScreen,'Impostazioni':settingsScreen};content.innerHTML=render[screen]();if(screen==='Importazioni'){importState.length=0;setupImports()}if(screen==='Ordini e margini')setupOrderFilters();if(screen==='Costi')setupOperationalFilters('cost');if(screen==='Resi')setupOperationalFilters('return');if(screen==='Da controllare')setupOperationalFilters('control');if(['Costi','Resi','Da controllare'].includes(screen))ensureOperations()}
-async function refreshDashboard(){const response=await fetch('/api/dashboard');const payload=await parseResponse(response);dashboard=payload.dashboard;show(currentScreen)}
+async function refreshDashboard(){const response=await apiFetch('/api/dashboard');const payload=await parseResponse(response);dashboard=payload.dashboard;show(currentScreen)}
 content.addEventListener('click',(event)=>{const button=event.target.closest('.order-link');if(button)openOrderDetail(button.dataset.orderId)});
 document.querySelector('#export').addEventListener('click',exportCurrentScreen);
-document.querySelector('#recalculate').addEventListener('click',async(event)=>{const button=event.currentTarget;button.disabled=true;button.textContent='Ricalcolo…';try{await parseResponse(await fetch('/api/recalculate',{method:'POST'}));await refreshDashboard()}catch(error){alert(errorLabels[error.message]||error.message)}finally{button.disabled=false;button.textContent='Ricalcola'}});
+document.querySelector('#recalculate').addEventListener('click',async(event)=>{const button=event.currentTarget;button.disabled=true;button.textContent='Ricalcolo…';try{await parseResponse(await apiFetch('/api/recalculate',{method:'POST'}));await refreshDashboard()}catch(error){alert(errorLabels[error.message]||error.message)}finally{button.disabled=false;button.textContent='Ricalcola'}});
+if(isOnline){document.querySelector('#environment-label').textContent='Supabase online';document.querySelector('#notice-title').textContent='Ambiente online';document.querySelector('#notice-text').textContent='I file confermati e i ricalcoli vengono salvati su Supabase. Le anteprime non scrivono dati.'}
 show('Riepilogo');
-refreshDashboard().catch(()=>{});
+refreshDashboard().catch((error)=>{content.innerHTML=`<section class="card"><div class="empty"><strong>Dati non disponibili</strong>${escapeHtml(errorLabels[error.message]||error.message)}</div></section>`});

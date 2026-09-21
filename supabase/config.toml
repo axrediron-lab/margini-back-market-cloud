@@ -22,3 +22,6 @@ additional_redirect_urls = ["http://localhost:4173"]
 
 [functions.import-google-sheet]
 verify_jwt = true
+
+[functions.online-api]
+verify_jwt = true

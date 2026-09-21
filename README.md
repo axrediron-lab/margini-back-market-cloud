@@ -1,22 +1,23 @@
 # Margini Back Market Cloud
 
 Nuovo progetto locale, completamente separato da **Margini Back Market V2**.
-Questa prima fase contiene specifica verificabile, schema PostgreSQL/Supabase, contratti di importazione e una shell UI italiana. Non contiene dati operativi, credenziali o risorse remote.
+Contiene specifica verificabile, schema PostgreSQL/Supabase, importazione e ricalcolo locali, e codice per il percorso online descritto in `docs/09_ATTIVAZIONE_ONLINE.md`. Non contiene CSV operativi o credenziali.
 
 ## Stato della fase
 
 | Area | Stato | Note |
 |---|---|---|
 | Specifica economica e architetturale | Progettata | Regole vincolanti in `docs/` |
-| Schema Supabase/PostgreSQL | Implementato localmente | Migrazione SQL non applicata a istanze remote |
-| RLS e ruoli | Applicati localmente | Migrazione e lint superati; test autenticati con dati sintetici ancora da eseguire |
+| Schema Supabase/PostgreSQL | Applicato localmente e da remoto | Sei migrazioni sul progetto collegato; dry-run remoto aggiornato |
+| RLS e ruoli | Applicati localmente e da remoto | Migrazione e lint locali superati; test autenticati con dati sintetici ancora da eseguire |
 | Import CSV | Anteprima e conferma locale implementate | Cinque tracciati riconosciuti; batch e righe normalizzate in staging |
 | Motore economico | Primo run locale persistito | 1.034 ordini coperti, parametri e provenienza registrati |
 | Interfaccia | Cruscotto locale collegato | KPI, andamento, ordini, costi, resi, controlli e parametri reali |
 | Test | Implementati e superati localmente | Regole economiche, parser reali, privacy e controlli statici dello schema |
-| Supabase remoto | Progetto creato e checkout collegato | Nessuna migrazione applicata al database remoto |
+| Supabase remoto | Schema e due funzioni Edge distribuiti | `online-api` e `import-google-sheet` attive con verifica JWT; accesso anonimo 401 |
 | Dati reali locali | Importati e calcolati | Sei file nel solo Supabase locale; nessun CSV nel repository |
-| Deploy remoto | **In attesa di autorizzazione** | GitHub e Supabase online non aggiornati |
+| Codice online | Implementato localmente, non collaudato end-to-end | Auth, API, CSV/Fogli Google e UI; limiti Edge da verificare |
+| Sito online | **Non pubblicato** | Hosting, utente Auth, origine CORS e Google non ancora configurati; nessun dato reale remoto |
 
 ## Avvio locale della sola interfaccia
 
